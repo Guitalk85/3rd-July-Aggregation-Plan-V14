@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aggregation Plan — V14</title>
+<style>
+  :root{
+    --green:#1a8a3c;--green-dark:#0f6e2e;--green-soft:#e8f5ec;
+    --ink:#1f2937;--muted:#6b7280;--faint:#9ca3af;--line:#e5e7eb;--bg:#f4f6f5;--card:#fff;
+    --teal:#1d9e75;--amber:#ef9f27;
+    --red:#e24b4a;--red-soft:#fcebeb;--blue:#378add;--blue-soft:#e6f1fb;--grass:#639922;--grass-soft:#eaf3de;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:15px;line-height:1.5;}
+  .topbar{background:var(--green);color:#fff;height:50px;display:flex;align-items:center;justify-content:center;font-size:14px;gap:6px;}
+  .topbar b{font-weight:600;}
+  .wrap{max-width:880px;margin:0 auto;padding:18px 20px 70px;}
+  .phead{display:flex;align-items:center;justify-content:space-between;}
+  .phead .l{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);}
+  .pill{font-size:11px;padding:2px 9px;border-radius:999px;background:var(--grass-soft);color:#3b6d11;font-weight:600;}
+  h1{font-size:22px;font-weight:600;margin:2px 0 14px;}
+
+  .layer{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px;}
+  .lh{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .ln{font-size:15px;font-weight:600;}
+  .scope{margin-left:auto;font-size:11px;color:var(--muted);background:var(--bg);padding:2px 10px;border-radius:999px;}
+  .info{width:18px;height:18px;border-radius:50%;border:1px solid var(--line);color:var(--muted);font-size:11px;font-style:italic;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+  .seemore{font-size:12px;color:var(--blue);text-decoration:underline;cursor:pointer;}
+  .cta{display:flex;align-items:center;justify-content:space-between;background:var(--blue-soft);color:#0c447c;border-radius:8px;padding:13px 16px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;}
+
+  /* north star */
+  .toprow{display:flex;gap:12px;align-items:stretch;}
+  .daycard{flex:0 0 150px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;justify-content:center;}
+  .dnum{font-size:40px;font-weight:700;line-height:1;}
+  .dlbl{font-size:12px;color:var(--muted);font-weight:600;margin-top:3px;}
+  .dgoal{font-size:11px;color:var(--faint);margin-top:5px;}
+  .hero{flex:1;border-radius:12px;padding:16px 18px;border:1px solid #f0bcbc;background:var(--red-soft);}
+  .hero .lab{font-size:12px;font-weight:600;margin-bottom:6px;color:#a32d2d;}
+  .hero .big{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;}
+  .hero .pct{font-size:32px;font-weight:700;line-height:1;color:#a32d2d;}
+  .hero .of{font-size:13px;color:var(--muted);}
+  .pbar{height:10px;border-radius:999px;background:#fff;overflow:hidden;}
+  .pbar>i{display:block;height:100%;width:33%;background:var(--red);}
+  .hnote{font-size:12px;margin-top:9px;color:#a32d2d;}
+
+  /* filters */
+  .vfilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .slabel{font-size:11px;color:var(--muted);font-weight:600;}
+  .chip{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 13px;cursor:pointer;}
+  .chip.on{background:var(--green-soft);border-color:var(--green);color:var(--green-dark);font-weight:600;}
+  .vsearch{position:relative;width:280px;}
+  .vsearch input{width:100%;font-size:13px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);}
+  .vsearch input:focus{outline:none;border-color:var(--green);}
+  .vlist{position:absolute;top:40px;left:0;right:0;max-height:260px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);z-index:40;display:none;}
+  .vlist.show{display:block;}
+  .vitem{padding:8px 12px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--line);}
+  .vitem:first-child{border-top:none;}
+  .vitem:hover{background:var(--bg);}
+  .vitem .vp{color:var(--muted);font-size:12px;}.vitem .vd{color:var(--faint);font-size:11px;}
+
+  /* interest context */
+  .ictx{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:8px;padding:9px 13px;font-size:11.5px;color:var(--muted);margin-bottom:14px;}
+  .ictx b{color:var(--ink);font-weight:600;}
+
+  /* bucket bars */
+  .frow{display:flex;align-items:center;gap:12px;margin-bottom:11px;cursor:pointer;border-radius:8px;padding:5px 6px;margin-left:-6px;margin-right:-6px;}
+  .frow:hover{background:var(--bg);}
+  .frow .stage{width:250px;flex-shrink:0;font-size:14.5px;font-weight:600;}
+  .frow .stage .h{font-size:12.5px;color:#4b5563;font-weight:400;line-height:1.35;margin-top:2px;}
+  .binfo{width:17px;height:17px;border-radius:50%;font-size:10.5px;font-style:italic;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-right:7px;vertical-align:middle;position:relative;top:-1px;flex-shrink:0;}
+  .binfo.r{background:var(--red-soft);color:#a32d2d;border:1px solid #f0bcbc;}
+  .binfo.g{background:var(--green-soft);color:var(--green-dark);border:1px solid #bfe0c2;}
+  .bartip{position:fixed;z-index:90;background:#1f2937;color:#fff;padding:11px 14px;border-radius:9px;font-size:12.5px;line-height:1.5;max-width:320px;pointer-events:none;display:none;box-shadow:0 8px 24px rgba(0,0,0,.25);}
+  .bartip .tt-n{font-weight:700;font-size:13.5px;}
+  .bartip .tt-s{margin-top:5px;padding-top:6px;border-top:1px solid rgba(255,255,255,.2);}
+  .bartip .tt-s.r{color:#ffb3b1;}
+  .bartip .tt-s.g{color:#9fdcae;}
+  .segstat{font-size:13px;font-weight:600;border-radius:8px;padding:10px 13px;margin:10px 0 2px;}
+  .segstat.r{background:var(--red-soft);color:#a32d2d;border:1px solid #f0bcbc;}
+  .segstat.g{background:var(--green-soft);color:var(--green-dark);border:1px solid #bfe0c2;}
+  .track{flex:1;min-width:0;}
+  .fbar{height:40px;border-radius:8px;display:flex;overflow:hidden;}
+  .bk{height:100%;}.nb{height:100%;opacity:.30;}
+  .fval{width:170px;flex-shrink:0;text-align:right;font-size:14px;font-weight:600;}
+  .fval .fsub{font-size:10.5px;color:var(--faint);font-weight:400;}
+  .legend{font-size:11px;color:var(--muted);margin:6px 0 2px 256px;display:flex;align-items:center;gap:6px;}
+  .sw{display:inline-flex;align-items:center;gap:5px;}
+  .sw i{width:22px;height:11px;border-radius:3px;display:inline-block;background:#777;}
+  .sw i.f{opacity:.30;}
+
+  /* last season */
+  .three{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .stat{background:var(--bg);border-radius:8px;padding:12px;}
+  .stat.b{background:var(--grass-soft);}
+  .stat .n{font-size:20px;font-weight:700;}
+  .stat .t{font-size:11px;color:var(--muted);margin-top:2px;}
+
+  /* capacity */
+  .cap{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+  .capbar{flex:1;height:9px;border-radius:999px;background:var(--bg);overflow:hidden;}
+  .capbar>i{display:block;height:100%;background:var(--teal);}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;color:var(--muted);font-weight:600;padding:7px 6px;font-size:11px;}
+  td{padding:9px 6px;border-top:1px solid var(--line);}
+  .gp{font-weight:600;}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-start;justify-content:center;padding:36px 16px;overflow:auto;z-index:60;}
+  .overlay.show{display:flex;}
+  .modal{width:100%;max-width:600px;background:#fff;border-radius:14px;padding:20px 22px;}
+  .modal h3{margin:0;font-size:17px;font-weight:600;}
+
+  /* segment (where do you want to go) popup */
+  .segrow{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:10px;}
+  .segrow .swb{width:26px;height:16px;border-radius:4px;flex-shrink:0;margin-top:4px;}
+  .segrow .sl{flex:1;min-width:0;text-align:left;}
+  .segrow .sl b{font-size:17px;line-height:1.3;display:block;}
+  .segrow .sl .cnt{font-size:14px;color:var(--muted);margin-top:3px;}
+  .segrow .lnk{font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:6px;}
+  .segbtns{display:flex;flex-direction:column;gap:8px;flex-shrink:0;width:150px;}
+  .sbtn{font-size:13.5px;font-weight:600;border-radius:9px;min-height:48px;padding:10px 14px;border:1px solid var(--line);background:#fff;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;}
+  .sbtn svg{flex-shrink:0;}
+  .sbtn.go{background:var(--green);color:#fff;border-color:transparent;}
+  .segnote{font-size:11.5px;color:var(--faint);margin-top:12px;}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:80;}
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="topbar">📍 <b>Gokavaram Biomass Bank</b>, Rajahmundry ▾</div>
+<div class="wrap">
+  <div class="phead">
+    <div class="l">← <strong>PLAN 209</strong> <span class="pill">ACTIVE</span></div>
+    <span style="font-size:12px;color:var(--faint);">🕒 refreshed 14 min ago</span>
+  </div>
+  <h1>Gokavaram – Rabi – Maize – 2026</h1>
+
+  <!-- NORTH STAR (scaled in ACREAGE) -->
+  <div class="layer">
+    <div class="lh"><span class="ln">Booking readiness</span><span class="info" data-tip="Booked acreage against this season's target (1,500 MT / 900 ac). Booking needs acreage + accurate location — fix the data to unlock the rest." onclick="toast(this.dataset.tip)">i</span></div>
+    <div class="toprow">
+      <div class="daycard"><div class="dnum">52</div><div class="dlbl">days left</div><div class="dgoal">to lock bookings</div></div>
+      <div class="hero">
+        <div class="lab">BOOKED acreage · season target</div>
+        <div class="big"><span class="pct">33%</span><span class="of">300 of 900 acres booked · 150 farmers booked</span></div>
+        <div class="pbar"><i></i></div>
+        <div class="hnote">Behind. Book Qualified & bank-pending farmers now; fix acreage & location to unlock the rest.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FARMER READINESS (scaled in FARMERS) -->
+  <div class="layer">
+    <div class="lh"><span class="ln">Farmer readiness</span><span class="info" data-tip="Each farmer sits in one bucket (their next gap). Booking needs acreage + accurate location — so Acreage-missing and Location-flagged farmers CAN'T be booked yet; fix the data first. Bank-missing and Qualified are bookable: solid = booked, faded = not yet booked. Bars are scaled by number of farmers." onclick="toast(this.dataset.tip)">i</span><span class="scope">scaled by farmers</span></div>
+
+    <div class="vfilters">
+      <span class="slabel">Distance:</span>
+      <span class="chip on" onclick="pickOne(this)">All</span>
+      <span class="chip" onclick="pickOne(this)">0–5 km</span>
+      <span class="chip" onclick="pickOne(this)">5–10 km</span>
+      <span class="chip" onclick="pickOne(this)">10–20 km</span>
+      <span class="chip" onclick="pickOne(this)">20–50 km</span>
+    </div>
+    <div class="vfilters">
+      <span class="slabel">Village potential:</span>
+      <span class="chip on" onclick="pickOne(this)">All <span style="color:var(--faint);font-weight:400;">51</span></span>
+      <span class="chip" onclick="pickOne(this)">High <span style="color:var(--faint);font-weight:400;">11</span></span>
+      <span class="chip" onclick="pickOne(this)">Medium <span style="color:var(--faint);font-weight:400;">11</span></span>
+      <span class="chip" onclick="pickOne(this)">Low <span style="color:var(--faint);font-weight:400;">29</span></span>
+    </div>
+    <div class="vfilters" style="align-items:center;">
+      <span class="slabel">Village:</span>
+      <div class="vsearch" style="margin-left:0;width:280px;">
+        <input id="villInput" placeholder="All villages — type to search…" autocomplete="off" onfocus="openVL()" oninput="renderVL()">
+        <div id="villList" class="vlist"></div>
+      </div>
+    </div>
+
+    <div class="ictx">🌱 <span>Total <b id="intCount">2,407</b> agri-partners onboarded. Every farmer sits in exactly one bar below — their next gap. Start with <b>high-potential, closest villages</b> to get data corrected first.</span></div>
+
+    <div id="bucketBars"></div>
+
+    <div class="legend" style="justify-content:flex-end;">
+      <span class="sw"><i style="background:var(--green-dark)"></i> booked</span>
+      <span class="sw" style="margin-left:14px;"><i class="f" style="background:var(--green-dark)"></i> not yet booked</span>
+    </div>
+
+    <div class="cta" style="margin-top:14px;" onclick="openM('mVil')"><span>📍 Which villages should I cover next?</span><span>→</span></div>
+  </div>
+
+  <!-- LAST SEASON -->
+  <div class="layer">
+    <div class="lh"><span class="ln">Last season's farmers</span><span class="info" data-tip="Our warm list — proven farmers to re-engage first. Tap a number to open that list in Agri Partners." onclick="toast(this.dataset.tip)">i</span><span class="scope">2025</span></div>
+    <div class="three">
+      <div class="stat b" style="cursor:pointer;" onclick="toast('Opening 150 who sold biomass')"><div class="n" style="color:#173404;display:flex;align-items:center;gap:7px;">150 <span style="display:inline-flex;width:18px;height:18px;border-radius:50%;background:#1a8a3c;color:#fff;font-size:11px;align-items:center;justify-content:center;">✓</span></div><div class="t" style="color:#3b6d11;">sold biomass · most reliable</div></div>
+      <div class="stat" style="cursor:pointer;" onclick="toast('Opening 95 FOM buyers')"><div class="n">95</div><div class="t">bought FOM</div></div>
+    </div>
+    <div style="margin-top:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;font-size:13px;">
+        <span style="font-weight:600;color:var(--muted);">88 / 150 done</span>
+        <span><strong style="color:#a32d2d;">62 proven farmers not reached yet</strong></span>
+      </div>
+      <div style="height:9px;border-radius:999px;overflow:hidden;display:flex;">
+        <div style="width:58.7%;height:100%;background:var(--grass);"></div>
+        <div style="width:41.3%;height:100%;background:#e24b4a;"></div>
+      </div>
+      <div style="margin-top:9px;"><a class="seemore" style="color:#a32d2d;font-weight:600;" onclick="toast('Opening the 62 farmers to reach out')">Reach out to the remaining 62 →</a></div>
+    </div>
+  </div>
+
+  <!-- AGGREGATION CAPACITY -->
+  <div class="layer">
+    <div class="lh"><span class="ln">Aggregation capacity</span><span class="info" data-tip="Tractors and trained drivers from the same farmer pool. Certified driver = heavy-vehicle licence + trained at a BFC camp." onclick="toast(this.dataset.tip)">i</span><span class="scope">tractors & drivers</span></div>
+    <div class="cap" style="margin-bottom:3px;"><span style="width:130px;font-size:13px;">Tractors</span><div class="capbar"><i style="width:64%;"></i></div><span style="width:96px;text-align:right;font-size:13px;font-weight:600;">9<span style="color:var(--faint);font-weight:400;"> / 14 needed</span></span></div>
+    <div style="font-size:11px;color:var(--faint);margin:0 0 12px 142px;">gap of 5 tractors</div>
+    <div class="cap" style="margin-bottom:3px;"><span style="width:130px;font-size:13px;">Certified drivers</span><div class="capbar"><i style="width:43%;background:var(--amber);"></i></div><span style="width:96px;text-align:right;font-size:13px;font-weight:600;">6<span style="color:var(--faint);font-weight:400;"> / 14 needed</span></span></div>
+    <div style="font-size:11px;color:var(--faint);margin:0 0 8px 142px;">gap of 8 drivers</div>
+    <a class="seemore" onclick="toast('Opening 12 interested drivers')">12 farmers interested as drivers — not yet approached →</a>
+  </div>
+</div>
+
+<!-- VILLAGES POPUP -->
+<div class="overlay" id="mVil" onclick="if(event.target===this)closeM('mVil')">
+  <div class="modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <h3>Villages to cover next</h3><button style="border:none;background:none;font-size:18px;color:var(--muted);cursor:pointer;" onclick="closeM('mVil')">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">GIS potential → onboarded → booked. Default: closest + highest potential first.</p>
+    <table>
+      <thead><tr><th>Village</th><th>Dist</th><th>GIS potential</th><th>Onb. farmers</th><th>Onb. acres</th><th>Booked</th></tr></thead>
+      <tbody>
+        <tr><td>Kovvur</td><td>12 km</td><td class="gp">810 acres</td><td>100</td><td>300 acres</td><td>0 acres</td></tr>
+        <tr><td>Gokavaram</td><td>3 km</td><td class="gp">620 acres</td><td>160</td><td>480 acres</td><td style="color:#3b6d11;">140 acres</td></tr>
+        <tr><td>Kadiyam</td><td>6 km</td><td class="gp">540 acres</td><td>120</td><td>360 acres</td><td style="color:#3b6d11;">100 acres</td></tr>
+        <tr><td>Dwarapudi</td><td>7 km</td><td class="gp">480 acres</td><td>40</td><td>120 acres</td><td>0 acres</td></tr>
+        <tr><td>Rajavolu</td><td>9 km</td><td class="gp">420 acres</td><td>30</td><td>90 acres</td><td>0 acres</td></tr>
+        <tr><td colspan="6"><a class="seemore" onclick="toast('Opening all 51 villages')">+ 46 more villages…</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- SEGMENT POPUP: where do you want to go -->
+<div class="overlay" id="mSeg" style="align-items:center;" onclick="if(event.target===this)closeM('mSeg')">
+  <div class="modal" style="max-width:640px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+      <h3 id="segTitle">—</h3><button style="border:none;background:none;font-size:18px;color:var(--muted);cursor:pointer;" onclick="closeM('mSeg')">✕</button>
+    </div>
+    <div id="segStatus"></div>
+    <div id="segRows"></div>
+  </div>
+</div>
+
+<div class="bartip" id="barTip"></div>
+<div class="toast" id="toast"></div>
+<script>
+  function showBarTip(e,i){
+    var b=BUCKETS[i], s=scaled(i), t=document.getElementById('barTip');
+    var nums;
+    if(b.book){
+      nums=nf(s.t)+' farmers &nbsp;·&nbsp; <b>'+nf(s.bk)+' booked</b> / '+nf(s.t-s.bk)+' not yet booked &nbsp;·&nbsp; ≈'+nf(s.a)+' ac';
+    }else if(b.ac!=null){
+      nums=nf(s.t)+' farmers &nbsp;·&nbsp; ≈'+nf(s.a)+' ac';
+    }else{
+      nums=nf(s.t)+' farmers &nbsp;·&nbsp; acreage unknown';
+    }
+    t.innerHTML='<div class="tt-n">'+b.n+'</div><div>'+nums+'</div><div class="tt-s '+(b.book?'g':'r')+'">'+(b.book?'✓ ':'🔒 ')+b.short+'</div>';
+    t.style.display='block';
+    var x=e.clientX+16, y=e.clientY+14;
+    if(x+330>window.innerWidth)x=e.clientX-330;
+    if(y+110>window.innerHeight)y=e.clientY-110;
+    t.style.left=x+'px'; t.style.top=y+'px';
+  }
+  function hideBarTip(){document.getElementById('barTip').style.display='none';}
+</script>
+<script>
+  function pickOne(el){el.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));el.classList.add('on');toast('Filtered: '+el.textContent);}
+  function openM(id){document.getElementById(id).classList.add('show');}
+  function closeM(id){document.getElementById(id).classList.remove('show');}
+  // [key,name,dist,opp]
+  var VILL=[['all','All villages',null,null],
+    [1,'Kothapalle',7.9,1812],[2,'Thantikonda',3.2,615],[3,'Gokavaram',2.5,512],[4,'Krishnunipalem',7.0,420],
+    [5,'Narasapuram',5.6,416],[6,'Nellipudi',15.7,384],[7,'Kanupuru',5.8,363],[8,'Gummalladuddi',2.3,357],
+    [9,'Dosakayalapalle',10.2,328],[10,'Jambupatnam',6.1,320],[11,'Rampa Yerrampalem',3.3,318],[12,'Atchutapuram',2.5,292],
+    [13,'Korukonda',5.8,290],[14,'Peda Bheempalle',6.8,267],[15,'Gadarada',7.8,266],[16,'Tirumalayapalem',8.8,213],
+    [17,'Takurupalem',7.4,173],[18,'Mallisala',13.2,160],[19,'Mallavaram',16.7,140],[20,'Indukuru',6.8,119],
+    [21,'Sudikonda',11.1,113],[22,'Narasimhapura Agraharam',8.6,109],[23,'Singarampalem',9.6,96],[24,'Bayyanapalle',14.3,88],
+    [25,'Ojubanda',9.0,86],[26,'Rajavaram',9.1,85],[27,'Molleru',18.8,82],[28,'Patharamavaram',12.4,59],
+    [29,'Surampalem',14.8,58],[30,'Pidathamamidi',18.2,49],[31,'Jaggampalem',8.7,47],[32,'Kotharamavaram',12.5,45],
+    [33,'Rajupetaloddi',12.1,39],[34,'Sivaramapatnam',14.2,36],[35,'Jiyyampalem',7.9,26],[36,'Chinagarlapadu',16.8,21],
+    [37,'Kothada',16.1,20],[38,'Doramamidi',18.6,20],[39,'Yamanapalle',12.6,20],[40,'Ummetha',10.9,20],
+    [41,'Padagarlapadu',18.1,18],[42,'Lothupalem',10.3,16],[43,'Kamavarappadu',12.3,14],[44,'Donelapalle',13.9,12],
+    [45,'Pothandorapalem',9.9,11],[46,'Loddipalem',14.5,8],[47,'Yerrampalem',17.1,6],[48,'Takurupalem (W)',11.2,4],
+    [49,'Kondalampalem',10.7,3],[50,'Amudalabanda',19.3,3],[51,'Bhupatipalem',15.5,0]];
+  function nf(n){return (n||0).toLocaleString('en-IN');}
+  var VMAP={}; VILL.forEach(function(r){VMAP[r[0]]=r[0]==='all'?{lbl:'All villages',opp:null}:{lbl:r[1]+' ('+r[2]+' km)',opp:r[3]};});
+
+  // mutually-exclusive buckets: each farmer in exactly one. total = farmers, ac = onboarded acreage (null = unknown), booked = farmers already booked, bookedAc = their acreage.
+  var BUCKETS=[
+    {key:'acreage-missing', n:'Acreage missing',           h:'has interest · capture acreage', col:'#e0413c', total:1044, ac:null, book:false,
+     msg:'These farmers cannot be booked yet because their acreage is not recorded. Capture the acreage first — the farmer then moves to his next step.',
+     short:'Cannot be booked — fix the data first'},
+    {key:'location',        n:'Location missing / flagged',h:'has acreage · fix location',     col:'#ef8a2e', total:738,  ac:3990, book:false,
+     msg:'These farmers cannot be booked yet because their farm location is missing or flagged as inaccurate. Fix the location — booking unlocks once it is accurate.',
+     short:'Cannot be booked — fix the data first'},
+    {key:'bank',            n:'Bank account missing',      h:'acreage + accurate location · bank missing', col:'#dcb40a', total:536, ac:3034, booked:110, bookedAc:220, book:true,
+     msg:'These farmers CAN be booked now — acreage and location are accurate. Bank account is only needed before payment, not for booking.',
+     short:'Can be booked now'},
+    {key:'qualified',       n:'Qualified',                 h:'all data accurate · just book',  col:'#1a8a3c', total:89, ac:623, booked:40, bookedAc:80, book:true,
+     msg:'These farmers CAN be booked now — all their data is accurate and verified. Just book.',
+     short:'Can be booked now'},
+  ];
+  var INTEREST=2407;
+  var TOTOPP=8981, curVill='all';
+  var BASE='https://farmer360.biofuelcircle.com/plans/209/farmers';
+
+  // build bar rows once
+  document.getElementById('bucketBars').innerHTML = BUCKETS.map(function(b,i){
+    var track = b.book
+      ? '<div class="track"><div class="fbar" id="bar'+i+'" style="width:0%"><div class="bk" id="bk'+i+'" style="background:'+b.col+'"></div><div class="nb" id="nb'+i+'" style="background:'+b.col+'"></div></div></div>'
+      : '<div class="track"><div class="fbar" id="bar'+i+'" style="width:0%;background:'+b.col+';opacity:.30"></div></div>';
+    var fval = '<div class="fval"><span id="c'+i+'">0</span> <span style="font-size:11px;color:var(--faint);font-weight:400;">farmers</span><div class="fsub" id="sub'+i+'"></div></div>';
+    var binfo='<span class="binfo '+(b.book?'g':'r')+'" title="'+b.msg+'" onclick="event.stopPropagation();toast(this.title)">i</span>';
+    return '<div class="frow" onclick="openSeg('+i+')" onmousemove="showBarTip(event,'+i+')" onmouseleave="hideBarTip()"><div class="stage">'+binfo+b.n+'<div class="h" style="margin-left:24px;">'+b.h+'</div></div>'+track+fval+'</div>';
+  }).join('');
+
+  function openVL(){document.getElementById('villList').classList.add('show');renderVL();}
+  function renderVL(){
+    var q=(document.getElementById('villInput').value||'').toLowerCase();var html='';
+    VILL.forEach(function(r){var key=r[0],name=r[1];
+      if(key==='all'){if(q&&'all villages'.indexOf(q)<0)return;html+='<div class="vitem" data-k="all"><span>All villages</span><span class="vd">aggregate</span></div>';return;}
+      if(q&&name.toLowerCase().indexOf(q)<0)return;
+      html+='<div class="vitem" data-k="'+key+'"><span>'+name+'</span><span><span class="vp">'+nf(r[3])+' acres</span> <span class="vd">· '+r[2]+' km</span></span></div>';
+    });
+    document.getElementById('villList').innerHTML=html||'<div class="vitem" style="color:var(--faint);">No match</div>';
+  }
+  function selectVill(key){curVill=key;var v=VMAP[key];document.getElementById('villInput').value=key==='all'?'All villages':(v.lbl+' · '+nf(v.opp)+' acres');document.getElementById('villList').classList.remove('show');renderBuckets();}
+
+  function scaled(i){
+    var b=BUCKETS[i];
+    var f=curVill==='all'?1:((VMAP[curVill].opp||0)/TOTOPP);
+    var t=Math.round(b.total*f);
+    var a=b.ac!=null?Math.round(b.ac*f):null;
+    var bk=b.book?Math.min(t,Math.round(b.booked*f)):0;
+    var bkAc=b.book&&b.bookedAc!=null?Math.round(b.bookedAc*f):0;
+    return {t:t,a:a,bk:bk,bkAc:bkAc};
+  }
+
+  function renderBuckets(){
+    var f=curVill==='all'?1:((VMAP[curVill].opp||0)/TOTOPP);
+    // bar widths scaled TRUE to farmer numbers (largest bucket = 100%)
+    var refMax=1; BUCKETS.forEach(function(b){refMax=Math.max(refMax,Math.round(b.total*f));});
+    BUCKETS.forEach(function(b,i){
+      var s=scaled(i);
+      document.getElementById('c'+i).textContent=nf(s.t);
+      var sub;
+      if(b.ac==null){ sub='acreage unknown'; }
+      else if(b.book){ sub=nf(s.bk)+' booked · ≈'+nf(s.a)+' ac'; }
+      else { sub='≈'+nf(s.a)+' ac'; }
+      document.getElementById('sub'+i).textContent=sub;
+      var w = s.t>0 ? (s.t/refMax*100) : 0;
+      document.getElementById('bar'+i).style.width=w+'%';
+      if(b.book){
+        var p=s.t>0?(s.bk/s.t*100):0;
+        document.getElementById('bk'+i).style.width=p+'%';
+        document.getElementById('nb'+i).style.width=(100-p)+'%';
+      }
+    });
+    document.getElementById('intCount').textContent=nf(Math.round(INTEREST*f));
+  }
+
+  /* ---------- segment popup: where do you want to go ---------- */
+  // large copy icon (two overlapping rounded squares) + pop-out / external-link icon
+  var ICON_COPY='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4.5A2.5 2.5 0 0 1 2 12.5v-8A2.5 2.5 0 0 1 4.5 2h8A2.5 2.5 0 0 1 15 4.5V5"/></svg>';
+  var ICON_POP='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+  function linkFor(b,seg){return BASE+'?bucket='+b.key+'&seg='+seg+'&village='+curVill;}
+  function copyLink(url){
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(function(){toast('Link copied');},function(){toast(url);});}
+    else{toast(url);}
+  }
+  var _segIdx=null;
+  function openSeg(i){
+    _segIdx=i;
+    var b=BUCKETS[i], s=scaled(i), v=VMAP[curVill].lbl;
+    document.getElementById('segTitle').textContent=b.n;
+    hideBarTip();
+    document.getElementById('segStatus').innerHTML='<div class="segstat '+(b.book?'g':'r')+'">'+(b.book?'✓ ':'🔒 ')+b.short+'</div>';
+    var rows;
+    if(b.book){
+      rows=[
+        {lbl:b.n+' — booked',        cnt:s.bk,     ac:s.bkAc,           seg:'booked',   faded:false},
+        {lbl:b.n+' — not yet booked',cnt:s.t-s.bk, ac:(s.a!=null?s.a-s.bkAc:null), seg:'unbooked', faded:true}
+      ];
+    }else{
+      rows=[{lbl:b.n+' — all farmers',cnt:s.t,ac:s.a,seg:'all',faded:true}];
+    }
+    document.getElementById('segRows').innerHTML=rows.map(function(r){
+      var url=linkFor(b,r.seg);
+      var acTxt=r.ac!=null?' · ≈'+nf(r.ac)+' ac':'';
+      return '<div class="segrow">'+
+        '<span class="swb" style="background:'+b.col+';'+(r.faded?'opacity:.30;':'')+'"></span>'+
+        '<div class="sl"><b>'+r.lbl+'</b><div class="cnt">'+nf(r.cnt)+' farmers'+acTxt+'</div><div class="lnk">'+url+'</div></div>'+
+        '<div class="segbtns">'+
+          '<button class="sbtn go" onclick="openList('+i+',\''+r.seg+'\','+r.cnt+')">Proceed '+ICON_POP+'</button>'+
+          '<button class="sbtn" onclick="copyLink(\''+url+'\')">'+ICON_COPY+' Copy link</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+    openM('mSeg');
+  }
+
+  /* ---------- plain farmer list in a NEW TAB (no menu, no filters) ---------- */
+  var NAMES=['Satti Babu','Sadguru','Kodivagula Prasad','Ramana Murthy','Venkata Rao','Lakshmi Devi','Appala Naidu','Suryanarayana','Durga Prasad','Nooka Raju','Simhachalam','Peda Appadu'];
+  var TAGS=['','','Bought FOM','','Driver','','Vendor','','Driver|Certified Operator','','',''];
+  var CROPS=['Rice, Maize','Rice','Rice, Wheat','Maize','Rice, Maize','Rice','Maize, Mustard','Rice, Maize','Rice','Maize','Rice, Maize','Rice'];
+  var SRC=['Web','WeighBridge','Web','Migrated','Web','Web','WeighBridge','Web','Migrated','Web','Web','Web'];
+  function openList(i,seg,cnt){
+    var b=BUCKETS[i], v=VMAP[curVill].lbl;
+    var segLbl=seg==='booked'?'Booked':seg==='unbooked'?'Not yet booked':'All';
+    var show=Math.min(cnt,10);
+    // build sample rows, then default-sort by distance (closest first — work these first)
+    var data=[];
+    for(var k=0;k<show;k++){
+      var vr=VILL[1+((k*5+i*3)%(VILL.length-1))];
+      data.push({k:k,vr:vr});
+    }
+    data.sort(function(a,b2){return a.vr[2]-b2.vr[2];});
+    var rows=data.map(function(d){
+      var k=d.k, vr=d.vr;
+      var ac=b.key==='acreage-missing'?null:(2+((k*3+i)%9));
+      var ph='9'+String(100000000+((k+1)*7919*(i+2))%900000000);
+      var st=seg==='booked'?'<span class="chip chip-g">BOOKED</span>':seg==='unbooked'?'<span class="chip chip-o">OPEN</span>':(b.key==='acreage-missing'?'<span class="chip chip-r">NO ACREAGE</span>':b.key==='location'?'<span class="chip chip-r">LOCATION FLAGGED</span>':'<span class="chip chip-o">OPEN</span>');
+      var tags=TAGS[k%TAGS.length]?TAGS[k%TAGS.length].split('|').map(function(t){return '<span class="tag">'+t+'</span>';}).join(' '):'';
+      var area=ac==null?'<span style="color:#9ca3af;">N/A</span><div class="sub">'+CROPS[k%CROPS.length]+'</div>':(ac+' Acres<div class="sub">'+CROPS[k%CROPS.length]+'</div>');
+      return '<tr><td>'+(220000+k*137+i*911)+'</td>'+
+        '<td><b>'+NAMES[k%NAMES.length]+'</b><div class="sub">'+ph+'</div></td>'+
+        '<td>'+tags+'</td>'+
+        '<td><span style="color:#378add;">📍 '+vr[1]+'</span></td>'+
+        '<td data-n="'+(ac==null?-1:ac)+'">'+area+'</td>'+
+        '<td data-n="'+vr[2]+'">'+vr[2]+' km</td>'+
+        '<td>'+st+'</td>'+
+        '<td>'+SRC[k%SRC.length]+'</td></tr>';
+    }).join('');
+    var more=cnt>show?('<tr><td colspan="8" style="color:#9ca3af;">… and '+nf(cnt-show)+' more farmers</td></tr>'):'';
+    var url=linkFor(b,seg);
+    var doc='<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>'+b.n+' · '+segLbl+' — Plan 209</title>'+
+    '<style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2937;background:#f4f6f5;font-size:14px;}'+
+    '.ctx{background:#1a8a3c;color:#fff;padding:14px 0;}.ctx .in{max-width:1080px;margin:0 auto;padding:0 14px;}.ctx b{font-size:16px;}.ctx .s{font-size:12px;opacity:.9;margin-top:3px;}'+
+    '.wrap{max-width:1080px;margin:16px auto;padding:0 14px;}'+
+    '.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:auto;}'+
+    'table{width:100%;border-collapse:collapse;min-width:860px;}th{text-align:left;font-size:11px;color:#6b7280;padding:11px 12px;background:#fafbfc;border-bottom:1px solid #e5e7eb;cursor:pointer;user-select:none;white-space:nowrap;}'+
+    'th:hover{color:#1a8a3c;}td{padding:12px;border-bottom:1px solid #f0f1f2;font-size:13.5px;vertical-align:top;}'+
+    '.sub{font-size:12px;color:#9ca3af;margin-top:2px;}'+
+    '.tag{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;background:#e8f5ec;color:#0f6e2e;margin:1px 2px 1px 0;white-space:nowrap;}'+
+    '.chip{display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;}'+
+    '.chip-g{background:#e8f5ec;color:#0f6e2e;}.chip-o{background:#e6f1fb;color:#0c447c;}.chip-r{background:#fcebeb;color:#a32d2d;}'+
+    '.note{font-size:11.5px;color:#9ca3af;margin:10px 2px;}</style></head><body>'+
+    '<div class="ctx"><div class="in"><b>'+b.n+' · '+segLbl+'</b><div class="s">You are viewing: Plan 209 — Gokavaram · Rabi · Maize · 2026 &nbsp;·&nbsp; '+v+' &nbsp;·&nbsp; '+nf(cnt)+' farmers &nbsp;·&nbsp; sorted by distance (closest first)</div></div></div>'+
+    '<div class="wrap"><div class="card"><table id="t"><thead><tr><th onclick="srt(0)">Partner ID ⇅</th><th onclick="srt(1)">Name ⇅</th><th>Tags</th><th onclick="srt(3)">Location (GIS Village) ⇅</th><th onclick="srt(4)">Area / Crop Information ⇅</th><th onclick="srt(5)">Distance From Biomass Bank ⇅</th><th onclick="srt(6)">Status ⇅</th><th onclick="srt(7)">Source ⇅</th></tr></thead><tbody>'+rows+more+'</tbody></table></div>'+
+    '<div class="note">Shared view — opened from: '+url+'</div></div>'+
+    '<scr'+'ipt>var asc={};function srt(c){var tb=document.querySelector("#t tbody");var rs=[].slice.call(tb.rows).filter(function(r){return r.cells.length>1;});asc[c]=!asc[c];rs.sort(function(a,b){var x=a.cells[c].dataset.n!==undefined?parseFloat(a.cells[c].dataset.n):a.cells[c].textContent.trim();var y=b.cells[c].dataset.n!==undefined?parseFloat(b.cells[c].dataset.n):b.cells[c].textContent.trim();if(typeof x==="number")return asc[c]?x-y:y-x;return asc[c]?String(x).localeCompare(y):String(y).localeCompare(x);});rs.forEach(function(r){tb.appendChild(r);});}</scr'+'ipt></body></html>';
+    var w=window.open('about:blank','_blank');
+    if(w){w.document.open();w.document.write(doc);w.document.close();}
+    else{toast('Pop-up blocked — allow pop-ups to open the list');}
+    closeM('mSeg');
+  }
+
+  document.getElementById('villList').addEventListener('click',function(e){var it=e.target.closest('.vitem');if(it&&it.dataset.k)selectVill(it.dataset.k);});
+  document.addEventListener('click',function(e){var s=document.querySelector('.vsearch');if(s&&!s.contains(e.target))document.getElementById('villList').classList.remove('show');});
+  document.getElementById('villInput').value='All villages';renderBuckets();
+  let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2600);}
+</script>
+</body>
+</html>
